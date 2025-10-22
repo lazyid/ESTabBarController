@@ -180,88 +180,100 @@ open class ESTabBar: UITabBar {
 }
 
 internal extension ESTabBar /* Layout */ {
-    
     func updateLayout() {
-        guard let tabBarItems = self.items else {
+        guard let tabBarItems = self.items, !tabBarItems.isEmpty else {
             ESTabBarController.printError("empty items")
             return
         }
-        
-        let tabBarButtons = subviews.filter { subview -> Bool in
-            if let cls = NSClassFromString("UITabBarButton") {
-                return subview.isKind(of: cls)
-            }
-            return false
-            } .sorted { (subview1, subview2) -> Bool in
-                return subview1.frame.origin.x < subview2.frame.origin.x
+
+        let containerCount = containers.count
+        guard containerCount > 0 else { return }
+
+        // 计算布局基础参数
+        let xStart = itemEdgeInsets.left
+        let yStart = itemEdgeInsets.top
+        let width = bounds.width - itemEdgeInsets.left - itemEdgeInsets.right
+        let height = bounds.height - yStart - itemEdgeInsets.bottom
+        let eachWidth = itemWidth == 0 ? width / CGFloat(containerCount) : itemWidth
+        let spacing = itemSpacing
+
+        var x = xStart
+        for container in containers {
+            container.frame = CGRect(x: x, y: yStart, width: eachWidth, height: height)
+            x += eachWidth + spacing
         }
-        
-        if isCustomizing {
-            for (idx, _) in tabBarItems.enumerated() {
-                tabBarButtons[idx].isHidden = false
-                moreContentView?.isHidden = true
-            }
-            for (_, container) in containers.enumerated(){
-                container.isHidden = true
-            }
-        } else {
-            for (idx, item) in tabBarItems.enumerated() {
-                if let _ = item as? ESTabBarItem {
-                    tabBarButtons[idx].isHidden = true
-                } else {
-                    tabBarButtons[idx].isHidden = false
-                }
-                if isMoreItem(idx), let _ = moreContentView {
-                    tabBarButtons[idx].isHidden = true
-                }
-            }
-            for (_, container) in containers.enumerated(){
-                container.isHidden = false
+
+        // 处理隐藏/显示逻辑
+        for (idx, item) in tabBarItems.enumerated() {
+            if let estItem = item as? ESTabBarItem {
+                containers[idx].isHidden = !isCustomizing
+            } else {
+                containers[idx].isHidden = false
             }
         }
-        
-        var layoutBaseSystem = true
-        if let itemCustomPositioning = itemCustomPositioning {
-            switch itemCustomPositioning {
-            case .fill, .automatic, .centered:
-                break
-            case .fillIncludeSeparator, .fillExcludeSeparator:
-                layoutBaseSystem = false
-            }
-        }
-        
-        if layoutBaseSystem {
-            // System itemPositioning
-            for (idx, container) in containers.enumerated(){
-                if !tabBarButtons[idx].frame.isEmpty {
+
+        moreContentView?.isHidden = !isCustomizing
+
+        // 兼容 iOS 26+ 系统 UITabBarButton
+        if #available(iOS 26.0, *) {
+            let tabBarButtons = subviews.filter { $0 is UIControl }.sorted { $0.frame.minX < $1.frame.minX }
+
+            for (idx, container) in containers.enumerated() {
+                if idx < tabBarButtons.count {
                     container.frame = tabBarButtons[idx].frame
                 }
             }
         } else {
-            // Custom itemPositioning
+            // iOS 25 及以下
+            let tabBarButtons = subviews.filter { subview -> Bool in
+                if let cls = NSClassFromString("UITabBarButton") {
+                    return subview.isKind(of: cls)
+                }
+                return false
+            }.sorted { $0.frame.minX < $1.frame.minX }
+
+            for (idx, container) in containers.enumerated() {
+                if idx < tabBarButtons.count {
+                    container.frame = tabBarButtons[idx].frame
+                }
+            }
+        }
+
+        // 自定义 itemPositioning
+        var layoutBaseSystem = true
+        if let itemCustomPositioning = itemCustomPositioning {
+            switch itemCustomPositioning {
+            case .fill, .automatic, .centered:
+                layoutBaseSystem = true
+            case .fillIncludeSeparator, .fillExcludeSeparator:
+                layoutBaseSystem = false
+            }
+        }
+
+        if !layoutBaseSystem {
             var x: CGFloat = itemEdgeInsets.left
             var y: CGFloat = itemEdgeInsets.top
             switch itemCustomPositioning! {
             case .fillExcludeSeparator:
-                if y <= 0.0 {
-                    y += 1.0
-                }
+                if y <= 0 { y += 1 }
             default:
                 break
             }
-            let width = bounds.size.width - itemEdgeInsets.left - itemEdgeInsets.right
-            let height = bounds.size.height - y - itemEdgeInsets.bottom
-            let eachWidth = itemWidth == 0.0 ? width / CGFloat(containers.count) : itemWidth
-            let eachSpacing = itemSpacing == 0.0 ? 0.0 : itemSpacing
-            
+
+            let width = bounds.width - itemEdgeInsets.left - itemEdgeInsets.right
+            let height = bounds.height - y - itemEdgeInsets.bottom
+            let eachWidth = itemWidth == 0 ? width / CGFloat(containers.count) : itemWidth
+            let eachSpacing = itemSpacing == 0 ? 0 : itemSpacing
+
             for container in containers {
-                container.frame = CGRect.init(x: x, y: y, width: eachWidth, height: height)
-                x += eachWidth
-                x += eachSpacing
+                container.frame = CGRect(x: x, y: y, width: eachWidth, height: height)
+                x += eachWidth + eachSpacing
             }
         }
     }
 }
+
+
 
 internal extension ESTabBar /* Actions */ {
     
